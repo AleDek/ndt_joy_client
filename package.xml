@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>landing_procedure</name>
+  <name>ndt_joy_client</name>
   <version>0.0.0</version>
   <description>The landing_procedure package</description>
 

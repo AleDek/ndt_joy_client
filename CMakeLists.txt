@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(landing_procedure)
+project(ndt_joy_client)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
@@ -12,6 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   sensor_msgs
   std_msgs
+  ndt_core_interface
 )
 include_directories( /usr/include/eigen3 )
 ## System dependencies are found with CMake's conventions
@@ -134,5 +135,5 @@ include_directories(
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 # The recommended prefix ensures that target names across packages don't collide
-add_executable( landing src/landing.cpp)
-target_link_libraries( landing ${catkin_LIBRARIES} )
+add_executable( ndt_joy_client src/ndt_joy_client.cpp)
+target_link_libraries( ndt_joy_client ${catkin_LIBRARIES} )
