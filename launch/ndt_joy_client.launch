@@ -1,0 +1,9 @@
+<?xml version="1.0" ?>
+
+<launch>
+
+
+  <rosparam command="load" file="$(find ndt_joy_client)/conf/params.yaml" />
+  <node pkg="ndt_joy_client" type="ndt_joy_client" name ="ndt_joy_client" output="screen" />
+
+</launch>	

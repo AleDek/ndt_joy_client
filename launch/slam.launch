@@ -1,0 +1,9 @@
+<?xml version="1.0" ?>
+
+<launch>
+
+    <include file="$(find realsense2_camera)/launch/rs_d400_and_t265.launch" />
+    <include file="$(find ndt_joy_client)/launch/rtabmap.launch" />
+    <include file="$(find tf_publisher)/launch/tf_pub.launch" />
+
+</launch>	

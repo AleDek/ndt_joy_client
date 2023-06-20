@@ -1,96 +1,7 @@
-#include "ros/ros.h"
-#include "boost/thread.hpp"
-#include "geometry_msgs/PoseStamped.h"
-#include "geometry_msgs/TwistStamped.h"
-#include "boost/thread.hpp"
-//---mavros_msgs
-#include "mavros_msgs/State.h"
-#include "mavros_msgs/CommandBool.h"
-#include "mavros_msgs/CommandTOL.h"
-#include <mavros_msgs/PositionTarget.h>
-//---
-#include "utils.h"
-#include "Eigen/Dense"
-#include <Eigen/Geometry>
-#include <Eigen/StdVector>
-//---
+
+#include "ndt_joy_client.h"
 
 
-
-#include <mutex>          // std::mutex
-#include "visualization_msgs/MarkerArray.h"
-#include "sensor_msgs/Joy.h"
-#include "sensor_msgs/Imu.h"
-#include <ros/package.h>
-#include <iostream>
-#include <fstream>
-#include "geometry_msgs/Twist.h"
-
-#include "ndt_core_interface/deploy.h"
-#include "ndt_core_interface/close.h"
-#include "ndt_core_interface/reset_bias.h"
-#include "ndt_core_interface/disable_motors.h"
-#include "ndt_core_interface/enable_motors.h"
-#include "ndt_core_interface/enable_admittance.h"
-#include "ndt_core_interface/interaction_mode.h"
-
-#include "std_msgs/Int32.h"
-
-using namespace Eigen;
-using namespace std;
-
-
-
-class SIMPLE_CLIENT {
-
-
-    public:
-        SIMPLE_CLIENT();
-        void position_controller();
-		void run();
-		void localization_cb ( geometry_msgs::PoseStampedConstPtr msg );
-		void mavros_state_cb( mavros_msgs::State mstate);
-
-        void joy_cb( sensor_msgs::Joy j );
-        void main_loop();
-
-    private:
-
-        ros::NodeHandle _nh;
-        ros::Publisher _target_pub;
-        ros::Subscriber _localization_sub;
-        ros::Subscriber _joy_data_sub;
-        ros::Subscriber _mavros_state_sub;
-
-        bool _first_local_pos;
-        bool _enable_joy;
-
-        bool _enable_openarm;
-        bool _enable_closearm;
-        bool _enable_admittance;
-        bool _enable_interaction;
-
-        // --- Desired state
-        Vector3d _cmd_p;
-        double _cmd_yaw;       
-        Vector3d _w_p;
-        Vector3d _vel_joy;
-        Vector4d _w_q;
-        float _mes_yaw;
-        mavros_msgs::State _mstate;
-        double _vel_joy_yaw;
-
-        int joy_ax0;
-        int joy_ax1;
-        int joy_ax2;
-        int joy_ax3;
-
-        int camera_0vel;
-        int camera_1vel;
-        int camera_2vel;
-        int camera_yaw_vel;
-
-};
 
 
 SIMPLE_CLIENT::SIMPLE_CLIENT() {
@@ -110,12 +21,13 @@ SIMPLE_CLIENT::SIMPLE_CLIENT() {
     if( !_nh.getParam("joy_ax3", joy_ax3)) {
         joy_ax3 = 1.0;
     }
-
 	_target_pub = _nh.advertise<mavros_msgs::PositionTarget>("/mavros/setpoint_raw/local", 1);
 
     _localization_sub   = _nh.subscribe( "/mavros/local_position/pose", 1, &SIMPLE_CLIENT::localization_cb, this);
     _mavros_state_sub   = _nh.subscribe( "/mavros/state", 1, &SIMPLE_CLIENT::mavros_state_cb, this);
     _joy_data_sub       = _nh.subscribe("/joy", 1, &SIMPLE_CLIENT::joy_cb, this);
+    _wrench_sub         = _nh.subscribe("/NDT/Sensor_wrench", 1, &SIMPLE_CLIENT::sensorWrench_cb, this);           
+    _desWrench_pub      = _nh.advertise<geometry_msgs::WrenchStamped>("/NDT/des_interaction_force", 1);
 
     _vel_joy << 0.0, 0.0, 0.0;
 
@@ -126,7 +38,11 @@ SIMPLE_CLIENT::SIMPLE_CLIENT() {
     _enable_closearm = false;
     _enable_admittance = false;
     _enable_interaction = false;
-
+    _joy_ctrl_active =  false;
+    _enable_pump = false;
+    _enable_home = false;
+    _first_wrench = false;
+    _currForce = 0.0;
     
 }
 
@@ -168,30 +84,27 @@ void SIMPLE_CLIENT::position_controller(){
     mavros_msgs::PositionTarget::IGNORE_AFY |
     mavros_msgs::PositionTarget::IGNORE_AFZ |
     mavros_msgs::PositionTarget::FORCE |
-    mavros_msgs::PositionTarget::IGNORE_YAW_RATE;
+    mavros_msgs::PositionTarget::IGNORE_YAW;
 
     while( !_first_local_pos )
         usleep(0.1*1e6);
     ROS_INFO("First local pose arrived!");
 
     _cmd_p = _w_p;
-    _cmd_yaw = _mes_yaw;
+    //_cmd_yaw = _mes_yaw;
 
     while (ros::ok()) {
         if( _mstate.mode != "OFFBOARD" ) {
             _cmd_p = _w_p;
-            _cmd_yaw = _mes_yaw;
-        }
-        else {
-            //---Position
-        }
+
+        } // No control: follow localization
 
         //---Publish command
         ptarget.header.stamp = ros::Time::now();
         ptarget.position.x = _cmd_p[0];
         ptarget.position.y = _cmd_p[1];
         ptarget.position.z = _cmd_p[2];
-        ptarget.yaw = _cmd_yaw;
+        ptarget.yaw_rate = _cmd_dyaw;       //We prefer yaw rate directly
         _target_pub.publish( ptarget );
         //---
 
@@ -200,32 +113,100 @@ void SIMPLE_CLIENT::position_controller(){
 }
 
 
-void SIMPLE_CLIENT::joy_cb( sensor_msgs::Joy j ) {
+void SIMPLE_CLIENT::joy_cb( sensor_msgs::JoyConstPtr j ) {
 
-    if( j.buttons[0] == 1 ) _enable_joy = true;
-    if( j.buttons[2] == 1 ) _enable_openarm = true;
-    if( j.buttons[3] == 1 ) _enable_closearm = true;
-    if( j.buttons[4] == 1 ) _enable_admittance = true;
-    if( j.buttons[5] == 1 ) _enable_interaction = true;
+    if( j->buttons[0] == 1 ) _enable_joy = true;
+    if( j->buttons[2] == 1 ) _enable_openarm = true;
+    if( j->buttons[1] == 1 ) _enable_closearm = true;
+    if( j->buttons[3] == 1 ) _enable_admittance = true;
+    if( j->buttons[9] == 1 ) _enable_interaction = true;
+    if( j->buttons[5] == 1 ) _enable_pump = true;
+    if( j->buttons[18] == 1 ) _enable_home = true;
     
-    
-    _vel_joy[0] = joy_ax0*j.axes[1]*0.2;
-    _vel_joy[1] = joy_ax1*j.axes[0]*0.2;
-    _vel_joy[2] = joy_ax2*j.axes[4]*0.2;
-    _vel_joy_yaw = joy_ax3*j.axes[3]*0.2;
+    _vel_joy[0] = joy_ax0*j->axes[1]*0.2;
+    _vel_joy[1] = joy_ax1*j->axes[0]*0.2;
+    _vel_joy[2] = joy_ax2*j->axes[5]*0.2;
+    _vel_joy_dyaw = joy_ax3*j->axes[2]*0.2;
 
 }
+
+
+
+void SIMPLE_CLIENT::joy_ctrl () {
+
+    ros::Rate r(100);
+    
+    _joy_ctrl_active = true;
+    
+    while ( ros::ok() && _joy_ctrl ) {
+
+        if( _mstate.mode == "OFFBOARD" ) {
+            _cmd_p[0] += _vel_joy[0]*(1/100.0);
+            _cmd_p[1] += _vel_joy[1]*(1/100.0);
+            _cmd_p[2] += _vel_joy[2]*(1/100.0);
+            _cmd_dyaw = _vel_joy_dyaw;
+        
+        }
+
+        _joy_ctrl_active = true;
+        r.sleep();
+    }
+
+    cout << "Deactivating joy control" << endl;
+    _joy_ctrl_active = false; 
+}
+
+
+void SIMPLE_CLIENT::forceSetpointRise(double riseTime, double desX) {
+	
+    while(!_first_wrench ) usleep(0.1*1e6); 
+
+	geometry_msgs::WrenchStamped desWrench;
+	desWrench.wrench.force.x  = desWrench.wrench.force.y =  desWrench.wrench.force.z  = 0.0;
+	desWrench.wrench.torque.x = desWrench.wrench.torque.y = desWrench.wrench.torque.z = 0.0;
+
+	if(riseTime <= 0){
+		desWrench.wrench.force.x = desX;
+		_desWrench_pub.publish(desWrench);
+		return;
+	}
+
+	double f0 = _currForce;
+	double f = 0;
+	double df = (desX - f0) / riseTime;
+	auto rTime = ros::Duration();
+	rTime.fromSec(riseTime);
+	auto startTime = ros::Time::now();
+	auto currTime = startTime;
+
+	while(currTime - startTime < rTime){
+		f = f0 + df * (currTime - startTime).toSec();
+		
+		desWrench.wrench.force.x = f;
+		_desWrench_pub.publish(desWrench);
+
+		currTime = ros::Time::now();
+	}
+}
+
+void SIMPLE_CLIENT::sensorWrench_cb(geometry_msgs::WrenchStamped msg){
+	_currForce = msg.wrench.force.z;
+	_first_wrench = true;
+}
+
 
 void SIMPLE_CLIENT::main_loop () {
 
     int enable_joy_cnt = 0;
+
     int enable_openarm_cnt = 0;
     int enable_closearm_cnt = 0;
     int enable_admittance_cnt = 0;
     int enable_interaction_cnt = 0;
+    int enable_home_cnt = 0;
 
-    bool joy_ctrl = false;
-    
+    _joy_ctrl_active = false;
+    _joy_ctrl = false;
     
     ros::Rate r(10);
 
@@ -238,8 +219,9 @@ void SIMPLE_CLIENT::main_loop () {
   	ros::ServiceClient disable_admittance_srv  = _nh.serviceClient<ndt_core_interface::enable_admittance>("/NDT/enable_admittance_mode");
   	ros::ServiceClient enable_interaction_srv  = _nh.serviceClient<ndt_core_interface::interaction_mode>("/NDT/enable_interaction_mode");
   	ros::ServiceClient disable_interaction_srv = _nh.serviceClient<ndt_core_interface::interaction_mode>("/NDT/enable_interaction_mode");
-
+    ros::ServiceClient home_arm_srv                = _nh.serviceClient<ndt_core_interface::close>("/NDT/home_arm");
 	ros::Publisher gelPump_pub = _nh.advertise<std_msgs::Int32>("/NDT/pump_time", 1);
+    
 	std_msgs::Int32 pumpTime;
 
 	ndt_core_interface::deploy open_srv;
@@ -251,124 +233,124 @@ void SIMPLE_CLIENT::main_loop () {
 	ndt_core_interface::enable_admittance disable_adm_srv;
 	disable_adm_srv.request.enable = false;
 	ndt_core_interface::reset_bias rnias_srv;
+    ndt_core_interface::close home_srv;
+
 
 	ndt_core_interface::interaction_mode enable_int_srv;
 	enable_int_srv.request.enable = true;
 	ndt_core_interface::interaction_mode disable_int_srv;
 	disable_int_srv.request.enable = false;
 
+    _arm_status = POSITION;
+	geometry_msgs::WrenchStamped desWrench;
+
     while( ros::ok() ) {
 
         enable_joy_cnt++;
         enable_openarm_cnt++;
         enable_closearm_cnt++;
-
-        //phase1_cnt++;
-        //phase2_cnt++;
+        enable_admittance_cnt++;
+        enable_interaction_cnt++;
+        enable_home_cnt++;
 
         if( _enable_joy == true && enable_joy_cnt > 50) {
-            joy_ctrl = !joy_ctrl;
+            _joy_ctrl = !_joy_ctrl;
             enable_joy_cnt = 0;
             _enable_joy = false;
-            cout << "JOY CTRL: " << joy_ctrl << endl;
         }
 
         if( _enable_openarm && enable_openarm_cnt > 50) {
             enable_openarm_cnt = 0;
             open_arm_srv.call( open_srv );
             _enable_openarm = false;
+            _arm_status = POSITION;
         }
 
         if( _enable_closearm && enable_closearm_cnt > 50) {
             enable_closearm_cnt = 0;
 			close_arm_srv.call( close_srv );
             _enable_closearm = false;
+            _arm_status = POSITION;
+        }
+
+        if( _enable_pump ) {
+            _enable_pump = false;
+            pumpTime.data = 1;
+            gelPump_pub.publish( pumpTime );
+            sleep(1);
+            pumpTime.data = 0;
+            gelPump_pub.publish( pumpTime );
         }
 
 
-        /*
-        if (_enable_phase1 == true && phase1_cnt > 50 ) {
-            phase1_cnt = 0;
-            phase1_ctrl = !phase1_ctrl;
-            _enable_phase1 = false;
-            if( phase1_ctrl ) {
-                joy_ctrl = phase2_ctrl = false;
+        if( _enable_admittance && enable_admittance_cnt > 50) {
+            if( _arm_status == POSITION )  {
+                reset_bias_srv.call(rnias_srv);
+                usleep(0.2*1e6);
+                enable_admittance_cnt = 0;
+                enable_admittance_srv.call( enable_adm_srv );
+                _enable_admittance = false;
+                _arm_status = ADMITTANCE;
             }
-            cout << "PHASE1 CTRL: " << phase1_ctrl << endl;
-
-        }
-
-        if (_enable_phase2 == true && phase2_cnt > 50 ) {
-            phase2_cnt = 0;
-            phase2_ctrl = !phase2_ctrl;
-            _enable_phase2 = false;
-            if( phase2_ctrl ) {
-                joy_ctrl = phase1_ctrl = false;
+            else if ( _arm_status == INTERACTION ) {
+                //force to zero, admittance
+                _enable_admittance = false;
+                enable_admittance_cnt = 0;
+                forceSetpointRise(3.0, 0.0); 
+                enable_admittance_srv.call( enable_adm_srv );
+                _arm_status = ADMITTANCE;
             }
-            cout << "PHASE2 CTRL: " << phase2_ctrl << endl;
-
-        }
-        */        
-
-        if( joy_ctrl ) {     
-            double cyaw = 0.0;       
-            if( _mstate.mode == "OFFBOARD" ) {
-
-                _cmd_p[0] += _vel_joy[0]*(1/10.0);
-                _cmd_p[1] += _vel_joy[1]*(1/10.0);
-                _cmd_p[2] += _vel_joy[2]*(1/10.0);
-
-                cyaw = _cmd_yaw + _vel_joy_yaw*(1/10.0);
-
-                while ( cyaw > M_PI ) cyaw -= 2*M_PI;
-                while ( cyaw < -M_PI ) cyaw += 2*M_PI;
-
-                _cmd_yaw = cyaw;
-
+            else {
+                enable_admittance_cnt = 0;
+                enable_admittance_srv.call( disable_adm_srv );
+                _enable_admittance = false;
+                _arm_status = POSITION;
             }
         }
-        /*
 
-        if( phase1_ctrl ) {
-            
-            eyaw = _lp_yaw - M_PI/2.0;            
-            if(_lp_yaw > 0.0 )        
-                _ref_dyaw = camera_yaw_vel*-0.05*eyaw;
-            else
-                _ref_dyaw = camera_yaw_vel*0.05*eyaw;
-            
-
-            if( norm(eyaw) < 0.1 ) {
-
-                ep << _lp[1], -_lp[0], 0.0;
-                //ep << 0, 1, 0;
+        if( _enable_interaction && enable_interaction_cnt > 50) {
+            if( _arm_status == INTERACTION )  {
                 
-                cout << "lp2: " << _lp[2]  << endl;
-                ep[2] =( _lp[2] > 1) ? (_lp[2]-1) : 0.0;
-                ep[0] = 0.0;
-                //ep[2] = 0.0;
-                cout << "ep: " << ep.transpose() << endl;
-                dvel = 0.1*ep;
-                cout << "dvel: " << dvel.transpose() << endl;
+                _enable_interaction = false;
+                disable_interaction_srv.call( disable_int_srv );
+                _arm_status = POSITION;
+                enable_interaction_cnt = 0;
 
+            } //Disable interaction from an interaction state
+            else if( _arm_status == ADMITTANCE ) {  
+                _enable_interaction = false;
+                enable_interaction_cnt = 0;
 
-                _cmd_p[0] += camera_0vel*dvel[0]*(1/10.0);
-                _cmd_p[1] += camera_1vel*dvel[1]*(1/10.0);
-                _cmd_p[2] += camera_2vel*dvel[2]*(1/10.0);
-                //_ref_p = _cmd_p;
-                cout << "_cmd_p: " << _cmd_p.transpose() << endl;
-                //_cmd_p = _ref_p;
-                
-                //check this!
+                //TO CHEEEEEEEEEEECK
+                desWrench.wrench.force.x  = desWrench.wrench.force.y =  desWrench.wrench.force.z  = 0.0;
+                desWrench.wrench.torque.x = desWrench.wrench.torque.y = desWrench.wrench.torque.z = 0.0;
+                desWrench.wrench.force.x = _currForce;
+	        	_desWrench_pub.publish(desWrench);
+
+                enable_interaction_srv.call( enable_int_srv );
+                forceSetpointRise(3.0, 2.5); 
+
+                _arm_status = INTERACTION;
+            } //Enable interaction from admittance state
+        }
+
+        if( _enable_home && enable_home_cnt > 50 ) {
+            _enable_home = false;
+            enable_home_cnt = 0;
+			home_arm_srv.call(home_srv);          
+            _arm_status = POSITION;
+        }
+
+        //Enable disable joy ctrl
+        if( _joy_ctrl && !_joy_ctrl_active ) {     
+            boost::thread joy_ctrl_t (&SIMPLE_CLIENT::joy_ctrl, this);
+            usleep(0.2*1e6);
+        }
+        else if (!_joy_ctrl ) {
+            if (_joy_ctrl_active == true ) {
+                _joy_ctrl_active = false;
             }
-
-
         }
-
-        if( phase2_ctrl ) { 
-
-        }
-        */
 
         r.sleep();
     }

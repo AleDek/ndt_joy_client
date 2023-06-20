@@ -135,5 +135,5 @@ include_directories(
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 # The recommended prefix ensures that target names across packages don't collide
-add_executable( ndt_joy_client src/ndt_joy_client.cpp)
+add_executable( ndt_joy_client src/ndt_joy_client.cpp ) #src/raise.cpp)
 target_link_libraries( ndt_joy_client ${catkin_LIBRARIES} )
