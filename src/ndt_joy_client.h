@@ -82,7 +82,7 @@ class SIMPLE_CLIENT {
         STATUS _arm_status;
         // --- Desired state
         Vector3d _cmd_p;
-        double _cmd_dyaw;       
+        double _cmd_yaw;       
         Vector3d _w_p;
         Vector3d _vel_joy;
         Vector4d _w_q;

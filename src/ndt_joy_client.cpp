@@ -83,20 +83,19 @@ void SIMPLE_CLIENT::position_controller(){
     mavros_msgs::PositionTarget::IGNORE_AFX |
     mavros_msgs::PositionTarget::IGNORE_AFY |
     mavros_msgs::PositionTarget::IGNORE_AFZ |
-    mavros_msgs::PositionTarget::FORCE |
-    mavros_msgs::PositionTarget::IGNORE_YAW;
+    mavros_msgs::PositionTarget::FORCE;
 
     while( !_first_local_pos )
         usleep(0.1*1e6);
     ROS_INFO("First local pose arrived!");
 
     _cmd_p = _w_p;
-    //_cmd_yaw = _mes_yaw;
+    _cmd_yaw = _mes_yaw;
 
     while (ros::ok()) {
         if( _mstate.mode != "OFFBOARD" ) {
             _cmd_p = _w_p;
-
+            _cmd_yaw = _mes_yaw;
         } // No control: follow localization
 
         //---Publish command
@@ -104,7 +103,7 @@ void SIMPLE_CLIENT::position_controller(){
         ptarget.position.x = _cmd_p[0];
         ptarget.position.y = _cmd_p[1];
         ptarget.position.z = _cmd_p[2];
-        ptarget.yaw_rate = _cmd_dyaw;       //We prefer yaw rate directly
+        ptarget.yaw = _cmd_yaw;
         _target_pub.publish( ptarget );
         //---
 
@@ -115,7 +114,24 @@ void SIMPLE_CLIENT::position_controller(){
 
 void SIMPLE_CLIENT::joy_cb( sensor_msgs::JoyConstPtr j ) {
 
-    if( j->buttons[0] == 1 ) _enable_joy = true;
+    // LOGITECH F710
+    // Switch on D(DirectInput) and Mode led OFF
+    if( j->buttons[1] == 1 ) _enable_joy = true;
+    if( j->buttons[0] == 1 ) _enable_openarm = true;
+    if( j->buttons[2] == 1 ) _enable_closearm = true;
+    if( j->buttons[3] == 1 ) _enable_admittance = true;
+    if( j->buttons[9] == 1 ) _enable_interaction = true;
+    if( j->buttons[5] == 1 ) _enable_pump = true;
+    if( j->buttons[8] == 1 ) _enable_home = true;
+    
+    // tocheck
+    _vel_joy[0] = joy_ax0*j->axes[1]*0.2;
+    _vel_joy[1] = joy_ax1*j->axes[0]*0.2;
+    _vel_joy[2] = joy_ax2*j->axes[3]*0.2;
+    _vel_joy_dyaw = joy_ax3*j->axes[2]*0.2;
+    
+    // STEELSERIES
+    /*if( j->buttons[0] == 1 ) _enable_joy = true;
     if( j->buttons[2] == 1 ) _enable_openarm = true;
     if( j->buttons[1] == 1 ) _enable_closearm = true;
     if( j->buttons[3] == 1 ) _enable_admittance = true;
@@ -126,7 +142,7 @@ void SIMPLE_CLIENT::joy_cb( sensor_msgs::JoyConstPtr j ) {
     _vel_joy[0] = joy_ax0*j->axes[1]*0.2;
     _vel_joy[1] = joy_ax1*j->axes[0]*0.2;
     _vel_joy[2] = joy_ax2*j->axes[5]*0.2;
-    _vel_joy_dyaw = joy_ax3*j->axes[2]*0.2;
+    _vel_joy_dyaw = joy_ax3*j->axes[2]*0.2;*/
 
 }
 
@@ -137,6 +153,7 @@ void SIMPLE_CLIENT::joy_ctrl () {
     ros::Rate r(100);
     
     _joy_ctrl_active = true;
+    cout << "Activating joy control" << endl;
     
     while ( ros::ok() && _joy_ctrl ) {
 
@@ -144,8 +161,7 @@ void SIMPLE_CLIENT::joy_ctrl () {
             _cmd_p[0] += _vel_joy[0]*(1/100.0);
             _cmd_p[1] += _vel_joy[1]*(1/100.0);
             _cmd_p[2] += _vel_joy[2]*(1/100.0);
-            _cmd_dyaw = _vel_joy_dyaw;
-        
+            _cmd_yaw += _vel_joy_dyaw*(1/100.0);
         }
 
         _joy_ctrl_active = true;
