@@ -154,6 +154,7 @@ void SIMPLE_CLIENT::joy_ctrl () {
     
     _joy_ctrl_active = true;
     cout << "Activating joy control" << endl;
+    ROS_INFO("Activating joy control");
     
     while ( ros::ok() && _joy_ctrl ) {
 
@@ -169,6 +170,7 @@ void SIMPLE_CLIENT::joy_ctrl () {
     }
 
     cout << "Deactivating joy control" << endl;
+    ROS_INFO("Deactivating joy control");
     _joy_ctrl_active = false; 
 }
 

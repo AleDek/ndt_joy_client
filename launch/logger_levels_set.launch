@@ -1,0 +1,10 @@
+<?xml version="1.0" ?>
+
+<launch>
+    <!-- set logger level for landing_point_detection  -->
+    <node pkg="rosservice" type="rosservice" name="mavros_log_level" args="call --wait /mavros/set_logger_level 'ros.mavros' 'warn'" />
+
+    <!-- set logger level for rtabmap  -->
+    <node pkg="rosservice" type="rosservice" name="rtabmap_log_level" args="call --wait /rtabmap/rtabmap/set_logger_level 'ros.rtabmap_ros' 'warn'" />
+
+</launch>	
