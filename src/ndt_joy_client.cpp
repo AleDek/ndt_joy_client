@@ -34,8 +34,8 @@ SIMPLE_CLIENT::SIMPLE_CLIENT() {
         _d_safe = 1.0;
     }
 
-    if( !_nh.getParam("delta_approch", _delta_approch)) {
-        _delta_approch = 0.3;
+    if( !_nh.getParam("d_approch", _d_approch)) {
+        _d_approch = 0.3;
     }
 
     if( !_nh.getParam("Kp_x", _Kp_x)) {
@@ -78,6 +78,18 @@ SIMPLE_CLIENT::SIMPLE_CLIENT() {
         _vyaw_max = 0.1;
     }
 
+    if( !_nh.getParam("wall_error_tresh", _wall_error_tresh)) {
+        _wall_error_tresh = 0.04;
+    }
+
+    if( !_nh.getParam("contact_force_tresh", _contact_force_tresh)) {
+        _contact_force_tresh = 0.5;
+    }
+
+    if( !_nh.getParam("range_mount_dist", _range_mount_dist)) {
+        _range_mount_dist = 0.42;;
+    }
+
 
 	_target_pub = _nh.advertise<mavros_msgs::PositionTarget>("/mavros/setpoint_raw/local", 1);
 
@@ -103,6 +115,7 @@ SIMPLE_CLIENT::SIMPLE_CLIENT() {
 
     _first_local_pos = false;
     _enable_joy = false;
+    _enable_next_step = false;
 
     _enable_openarm  = false;
     _enable_closearm = false;
@@ -116,7 +129,7 @@ SIMPLE_CLIENT::SIMPLE_CLIENT() {
     
     _first_range_l = false;
     _first_range_r = false;
-    _range_mount_dist = 0.42;
+    // _range_mount_dist = 0.42; //is a parameter
 }
 
 
@@ -162,7 +175,7 @@ void SIMPLE_CLIENT::joy_cb( sensor_msgs::JoyConstPtr j ) {
     if( j->buttons[9] == 1 ) _enable_interaction = true;
     if( j->buttons[5] == 1 ) _enable_pump = true;
     if( j->buttons[8] == 1 ) _enable_home = true;
-    // if( j->buttons[4] == 1 ) _enable_wall_ctrl = true;
+    if( j->buttons[5] == 1 ) _enable_next_step = true;
     
     // tocheck
     _vel_joy[0] = joy_ax0*j->axes[3]*0.2;
@@ -302,6 +315,7 @@ void SIMPLE_CLIENT::joy_ctrl () { //diventa ibrido, controllo da joy su y e z, m
         if( _joy_ctrl && _green_light_for_ctrl) { //compute control only if drone is in offboard
             
             e_x = _wall_xb_sp - _wall_xb;
+            _wall_error = e_x;
             if(fabs(e_x) < _eps_x) e_x = 0.00;
             e_yaw = -_wall_yaw;
             if(fabs(e_yaw) < _eps_yaw) e_yaw = 0.00;
@@ -436,7 +450,7 @@ void SIMPLE_CLIENT::traj_compute_scalar(double p_i, double p_f){
     int N = T/dt;
     int i =0;
     double t_0 =ros::Time::now().toSec();
-    ROS_INFO("new traj, N=%d", N);
+    // ROS_INFO("new traj, N=%d", N);
     while(ros::ok() && i <=N){
         //t = ros::Time::now().toSec()-t_0;
         s    = x(0)*pow(t,5)    +x(1)*pow(t,4)    +x(2)*pow(t,3)   +x(3)*pow(t,2) +x(4)*t +x(5);
@@ -455,12 +469,13 @@ void SIMPLE_CLIENT::traj_compute_scalar(double p_i, double p_f){
 void SIMPLE_CLIENT::main_loop () {
 
     int enable_joy_cnt = 0;
-    // int enable_wall_ctrl_cnt = 0;
     int enable_openarm_cnt = 0;
     int enable_closearm_cnt = 0;
     int enable_admittance_cnt = 0;
     int enable_interaction_cnt = 0;
     int enable_home_cnt = 0;
+
+    ROS_INFO("start main loop.");
 
     _joy_ctrl_active = false;
     _joy_ctrl = false;
@@ -509,13 +524,7 @@ void SIMPLE_CLIENT::main_loop () {
         enable_admittance_cnt++;
         enable_interaction_cnt++;
         enable_home_cnt++;
-        // enable_wall_ctrl_cnt++;
-
-        // if( _enable_wall_ctrl == true && enable_wall_ctrl_cnt > 50) {
-        //     _wall_ctrl = !_wall_ctrl;
-        //     enable_wall_ctrl_cnt = 0;
-        //     _enable_wall_ctrl = false;
-        // }
+       
 
         if( _enable_joy == true && enable_joy_cnt > 50) { //now is hybrid joy + wall control
             _joy_ctrl = !_joy_ctrl;
@@ -531,7 +540,7 @@ void SIMPLE_CLIENT::main_loop () {
             _arm_status = POSITION;
         }
 
-        if( _enable_closearm && enable_closearm_cnt > 50) {
+        if( _enable_closearm && enable_closearm_cnt > 50) { //remain to initialize ancd check ??
             enable_closearm_cnt = 0;
 			close_arm_srv.call( close_srv );
             _enable_closearm = false;
@@ -549,16 +558,16 @@ void SIMPLE_CLIENT::main_loop () {
 
 
         if( _enable_admittance && enable_admittance_cnt > 50) {
-            if( _arm_status == POSITION )  {
-                reset_bias_srv.call(rnias_srv);
+            if( _arm_status == POSITION )  {     //position_to_ammittance
+                reset_bias_srv.call(rnias_srv);  
                 usleep(0.2*1e6);
                 enable_admittance_cnt = 0;
                 enable_admittance_srv.call( enable_adm_srv );
                 _enable_admittance = false;
                 _arm_status = ADMITTANCE;
             }
-            else if ( _arm_status == INTERACTION ) {
-                //force to zero, admittance
+            else if ( _arm_status == INTERACTION ) {   //force to ammittance
+                //force to zero, admittance  
                 _enable_admittance = false;
                 enable_admittance_cnt = 0;
                 forceSetpointRise(3.0, 0.0); 
@@ -582,7 +591,7 @@ void SIMPLE_CLIENT::main_loop () {
                 enable_interaction_cnt = 0;
 
             } //Disable interaction from an interaction state
-            else if( _arm_status == ADMITTANCE ) {  
+            else if( _arm_status == ADMITTANCE ) {  //ammittance_to_force
                 _enable_interaction = false;
                 enable_interaction_cnt = 0;
 
@@ -599,7 +608,7 @@ void SIMPLE_CLIENT::main_loop () {
             } //Enable interaction from admittance state
         }
 
-        if( _enable_home && enable_home_cnt > 50 ) {
+        if( _enable_home && enable_home_cnt > 50 ) { //go_to_home
             _enable_home = false;
             enable_home_cnt = 0;
 			home_arm_srv.call(home_srv);          
@@ -632,10 +641,315 @@ void SIMPLE_CLIENT::main_loop () {
     }
 }
 
+
+
+void SIMPLE_CLIENT::sm_loop(){
+
+    ros::Rate r(10);
+    SM_STATUS state;
+    bool current_state_done;
+    bool first = true;
+    int wall_err_cnt;
+    int enable_joy_cnt;
+    int cont_f_cnt;
+
+    ros::ServiceClient close_arm_srv           = _nh.serviceClient<ndt_core_interface::deploy>("/NDT/close_arm");
+  	ros::ServiceClient open_arm_srv            = _nh.serviceClient<ndt_core_interface::close>("/NDT/open_arm");
+  	ros::ServiceClient reset_bias_srv          = _nh.serviceClient<ndt_core_interface::reset_bias>("/NDT/reset_bias");
+  	ros::ServiceClient disable_motors_srv      = _nh.serviceClient<ndt_core_interface::disable_motors>("/NDT/disable_motors");
+  	ros::ServiceClient enable_motors_srv       = _nh.serviceClient<ndt_core_interface::enable_motors>("/NDT/enable_motors");
+  	ros::ServiceClient enable_admittance_srv   = _nh.serviceClient<ndt_core_interface::enable_admittance>("/NDT/enable_admittance_mode");
+  	ros::ServiceClient disable_admittance_srv  = _nh.serviceClient<ndt_core_interface::enable_admittance>("/NDT/enable_admittance_mode");
+  	ros::ServiceClient enable_interaction_srv  = _nh.serviceClient<ndt_core_interface::interaction_mode>("/NDT/enable_interaction_mode");
+  	ros::ServiceClient disable_interaction_srv = _nh.serviceClient<ndt_core_interface::interaction_mode>("/NDT/enable_interaction_mode");
+    ros::ServiceClient home_arm_srv            = _nh.serviceClient<ndt_core_interface::close>("/NDT/home_arm");
+	ros::Publisher gelPump_pub = _nh.advertise<std_msgs::Int32>("/NDT/pump_time", 1);
+    
+	std_msgs::Int32 pumpTime;
+
+	ndt_core_interface::deploy open_srv;
+	ndt_core_interface::close close_srv;
+	ndt_core_interface::disable_motors disable_m_srv;
+	ndt_core_interface::enable_motors enable_m_srv;
+	ndt_core_interface::enable_admittance enable_adm_srv;
+	enable_adm_srv.request.enable = true;
+	ndt_core_interface::enable_admittance disable_adm_srv;
+	disable_adm_srv.request.enable = false;
+	ndt_core_interface::reset_bias rnias_srv;
+    ndt_core_interface::close home_srv;
+
+
+	ndt_core_interface::interaction_mode enable_int_srv;
+	enable_int_srv.request.enable = true;
+	ndt_core_interface::interaction_mode disable_int_srv;
+	disable_int_srv.request.enable = false;
+
+    _arm_status = POSITION;
+	geometry_msgs::WrenchStamped desWrench;
+
+    //TODO wait first local pos, mavros state, range and force
+    ROS_INFO("start sm loop.");
+   
+    state = LAND;
+    _enable_next_step = false;
+    current_state_done = false;
+    wall_err_cnt =0;
+    cont_f_cnt =0;
+    // _wall_error_tresh = 0.04;  //[m]  //are parameters
+    // _contact_force_tresh =0.5; //[N]
+
+    while( ros::ok() ) {
+
+        enable_joy_cnt++;
+        if( _enable_joy == true && enable_joy_cnt > 50) { //now is hybrid joy + wall control
+            if(!_joy_ctrl) _joy_ctrl = true;
+            else if( state ==LAND || state ==IDLE_CLOSE ||state == IDLE_OPEN ||state == GO_TO_HOME) _joy_ctrl = false;
+            else ROS_WARN("too neaw wall, cannot disable control!");
+            enable_joy_cnt = 0;
+            _enable_joy = false;
+        }
+
+        //Enable disable joy ctrl
+        if( _joy_ctrl && !_joy_ctrl_active ) {     
+            // boost::thread joy_ctrl_t (&SIMPLE_CLIENT::joy_ctrl, this);
+            if(_green_light_for_ctrl){
+                ROS_INFO("Green Light, Activating joy/wall control");
+            } 
+            else{
+                ROS_WARN("out of range for activating control");
+                _joy_ctrl = false;
+            }
+            // usleep(0.2*1e6);
+        }
+        else if (!_joy_ctrl ) {
+            if (_joy_ctrl_active == true ) {
+                _joy_ctrl_active = false;
+                ROS_INFO("Deactivating joy/wall control");
+            }
+        }
+
+        //update state
+        if (!_joy_ctrl_active){
+            if(_enable_next_step){
+                ROS_WARN("wall control not enabled, cannot run sm");
+                _enable_next_step = false;
+            }
+            if(state != IDLE_CLOSE && state != LAND){
+                state = IDLE_CLOSE;
+                current_state_done = false;
+            }
+
+        }
+
+        if(_enable_next_step && !current_state_done) _enable_next_step = false;
+
+        if(_enable_next_step && current_state_done && _joy_ctrl_active){ //&&joy ctrl
+            _enable_next_step = false;
+            current_state_done = false;
+            first = true;
+            switch (state){
+                case LAND:
+                    state = IDLE_CLOSE;
+                    break;            
+                case IDLE_CLOSE:
+                    state = APPROACH_WALL;
+                    break;
+                case APPROACH_WALL:
+                    state = IDLE_OPEN;
+                    break;
+                case IDLE_OPEN:
+                    state = PUMP;
+                    break;
+                case PUMP:
+                    state = POS_TO_ADM;
+                    break;
+                case POS_TO_ADM:
+                    state = GO_CONTACT;
+                    break;
+                case GO_CONTACT:
+                    state = ADM_TO_FORCE;
+                    break;
+                case ADM_TO_FORCE:
+                    state = MEASUREMENT;
+                    break;
+                case MEASUREMENT:
+                    state = FORCE_TO_ADM;
+                    break;
+                case FORCE_TO_ADM:
+                    state = LEAVE_WALL;
+                    break;
+                case LEAVE_WALL:
+                    state = GO_TO_HOME;
+                    break;
+                case GO_TO_HOME:
+                    state = IDLE_OPEN;
+                    break;
+
+                default:
+                    ROS_ERROR("not specified sm state");
+                    break;
+            }
+        }
+
+        if( !current_state_done){
+            switch (state){
+                case LAND:
+                    ROS_INFO("land.");
+                    current_state_done = true;
+                    break;            
+                case IDLE_CLOSE:
+                    ROS_INFO("close arm..");
+                    //call close srv
+                    close_arm_srv.call( close_srv );
+                    _arm_status = POSITION;
+                    current_state_done = true;
+                    ROS_INFO("done");
+                    break;
+                case APPROACH_WALL:
+                    if(first){
+                        ROS_INFO("going to d_safe..");
+                        traj_compute_scalar(_wall_xb_sp,_d_safe);
+                        first = false;
+                    }
+                    if(fabs(_wall_error) < _wall_error_tresh) wall_err_cnt++;
+                    else if(wall_err_cnt>0) wall_err_cnt--;
+                    if(wall_err_cnt>30){    //wait err under tresh for 3 s
+                        wall_err_cnt =0;
+                        current_state_done = true;
+                        ROS_INFO("done");
+                    }
+                    break;
+                case IDLE_OPEN:
+                    ROS_INFO("open arm..");
+                    //call open srv
+                    open_arm_srv.call( open_srv );
+                    _arm_status = POSITION;
+                    current_state_done = true;
+                    ROS_INFO("done");
+                    break;
+                case PUMP:
+                    ROS_INFO("pumping..");
+                    //call pump srv
+                    pumpTime.data = 1;
+                    gelPump_pub.publish( pumpTime );
+                    sleep(1);
+                    pumpTime.data = 0;
+                    gelPump_pub.publish( pumpTime );
+                    current_state_done = true;
+                    ROS_INFO("done");
+                    break;
+                case POS_TO_ADM:
+                    ROS_INFO("reset bias +ammittance..");
+                    //call resb srv
+                    //call amm srv
+                    if( _arm_status == POSITION )  {     //position_to_ammittance
+                        reset_bias_srv.call(rnias_srv);  
+                        usleep(0.2*1e6);
+                        enable_admittance_srv.call( enable_adm_srv );
+                        _arm_status = ADMITTANCE;
+                    }
+                    current_state_done = true;
+                    ROS_INFO("done");
+                    break;
+                case GO_CONTACT:
+                    if(first){
+                        ROS_INFO("going to d_approach..");
+                        traj_compute_scalar(_wall_xb_sp,_d_approch);
+                        first = false;
+                    }
+
+                    if(fabs(_wall_error) < _wall_error_tresh) wall_err_cnt++; //wait tracking error be low
+                    else if(wall_err_cnt>0) wall_err_cnt--;
+
+                    if(fabs(_currForce) > _contact_force_tresh) cont_f_cnt++; //wait detect min contact force
+                    else if(wall_err_cnt>0) cont_f_cnt--;
+
+                    if(wall_err_cnt>30 && cont_f_cnt>30){    //wait err under tresh for 3 s
+                        wall_err_cnt =0;
+                        cont_f_cnt=0;
+                        current_state_done = true;
+                        ROS_INFO("done");
+                    }
+                    break;
+                case ADM_TO_FORCE:
+                    ROS_INFO("force ramp..");
+                    //call force srv
+                    //call force ramp to sp
+                    //check for force sp ???
+                    if( _arm_status == ADMITTANCE ) {  //ammittance_to_force
+                        //TO CHEEEEEEEEEEECK
+                        desWrench.wrench.force.x  = desWrench.wrench.force.y =  desWrench.wrench.force.z  = 0.0;
+                        desWrench.wrench.torque.x = desWrench.wrench.torque.y = desWrench.wrench.torque.z = 0.0;
+                        desWrench.wrench.force.x = _currForce;
+                        _desWrench_pub.publish(desWrench);
+
+                        enable_interaction_srv.call( enable_int_srv );
+                        forceSetpointRise(3.0, 2.5); 
+
+                        _arm_status = INTERACTION;
+                    } //Enable interaction from admittance state
+                    //TODO check for force sp ???
+                    current_state_done = true;
+                    ROS_INFO("done");
+                    break;
+                case MEASUREMENT:
+                    ROS_INFO("meas..");
+                    current_state_done = true;
+                    break;
+                case FORCE_TO_ADM:
+                    ROS_INFO("force ramp to 0 + amm..");
+                    //call force ramp to 0
+                    //check for force ??? forse NO !
+                    //call amm srv
+                    if( _arm_status == INTERACTION ) {   //force to ammittance
+                        //force to zero, admittance  
+                        forceSetpointRise(3.0, 0.0); 
+                        enable_admittance_srv.call( enable_adm_srv );
+                        _arm_status = ADMITTANCE;
+                    }
+                    current_state_done = true;
+                    ROS_INFO("done");
+                    break;
+                case LEAVE_WALL:
+                    if(first){
+                        ROS_INFO("return to d_safe");
+                        traj_compute_scalar(_wall_xb_sp,_d_safe);
+                        first = false;
+                    }
+                    if(fabs(_wall_error) < _wall_error_tresh) wall_err_cnt++;
+                    else if(wall_err_cnt>0) wall_err_cnt--;
+                    if(wall_err_cnt>30){    //wait err under tresh for 3 s
+                        wall_err_cnt =0;
+                        current_state_done = true;
+                        ROS_INFO("done");
+                    }
+                    break;
+                case GO_TO_HOME:
+                    ROS_INFO("go home..");
+                    //call home srv
+                    home_arm_srv.call(home_srv);          
+                    _arm_status = POSITION;
+                    current_state_done = true;
+                    ROS_INFO("done");
+                    break;
+
+                default:
+                    ROS_ERROR("not specified sm state");
+                    break;
+            }
+        }
+
+
+
+        r.sleep();
+    }
+}
+
 void SIMPLE_CLIENT::run(){
     boost::thread mavros_setpoint_publisher_t( &SIMPLE_CLIENT::mavros_setpoint_publisher, this);
     boost::thread joy_ctrl_t (&SIMPLE_CLIENT::joy_ctrl, this);
-    boost::thread main_loop_t( &SIMPLE_CLIENT::main_loop, this );
+    // boost::thread main_loop_t( &SIMPLE_CLIENT::main_loop, this );
+    boost::thread sm_t( &SIMPLE_CLIENT::sm_loop, this );
     ros::spin();
 }
 

@@ -46,7 +46,21 @@
 using namespace Eigen;
 using namespace std;
 
-enum STATUS { POSITION, ADMITTANCE, INTERACTION};
+enum ARM_STATUS { POSITION, ADMITTANCE, INTERACTION};
+
+enum SM_STATUS {    LAND,
+                    IDLE_CLOSE, 
+                    APPROACH_WALL,
+                    IDLE_OPEN, 
+                    PUMP,
+                    POS_TO_ADM, 
+                    GO_CONTACT,
+                    ADM_TO_FORCE,
+                    MEASUREMENT,
+                    FORCE_TO_ADM,
+                    LEAVE_WALL,
+                    GO_TO_HOME};
+
 
 class SIMPLE_CLIENT {
 
@@ -64,6 +78,7 @@ class SIMPLE_CLIENT {
         void sensorWrench_cb(geometry_msgs::WrenchStamped msg);
         void forceSetpointRise(double riseTime, double desX);
         void traj_compute_scalar(double p_i, double p_f);
+        void sm_loop(); //task state machine
 
         
         void range_l_cb(const sensor_msgs::RangeConstPtr &range_left_msg);
@@ -95,13 +110,15 @@ class SIMPLE_CLIENT {
         bool _joy_ctrl;
         bool _joy_ctrl_active;
         bool _enable_openarm;
-        bool _enable_closearm;
+        bool _enable_closearm;     //remain to initialize ancd check 
         bool _enable_admittance;
         bool _enable_interaction;
         bool _enable_home;
         bool _enable_pump;
+        bool _enable_next_step;
         bool _first_wrench;
         double _currForce;
+        
 
         // wall approach control
         // bool _enable_wall_ctrl; //TODO remove
@@ -118,8 +135,11 @@ class SIMPLE_CLIENT {
         double _wall_xb_dot_sp;
         double _wall_xb;
         double _wall_yaw;
+        double _wall_error;
+        double _wall_error_tresh; //min admissible track error to end trajectory
+        double _contact_force_tresh; //min admissible contact force to detect wall contact
 
-        STATUS _arm_status;
+        ARM_STATUS _arm_status;
         // --- Desired state
         Vector3d _cmd_p;  // sp pos
         double _cmd_yaw;   
@@ -142,7 +162,7 @@ class SIMPLE_CLIENT {
         double _wall_max_dist;
 
         double _d_safe;
-        double _delta_approch;
+        double _d_approch;
         double _Kp_x;
         double _Kp_yaw;
         double _K_ff_x_dot;
