@@ -115,7 +115,9 @@ SIMPLE_CLIENT::SIMPLE_CLIENT() {
 
     _first_local_pos = false;
     _enable_joy = false;
+    _disable_joy = false;
     _enable_next_step = false;
+    _green_light_for_ctrl = false;
 
     _enable_openarm  = false;
     _enable_closearm = false;
@@ -167,21 +169,33 @@ void SIMPLE_CLIENT::range_r_cb(const sensor_msgs::RangeConstPtr &range_right_msg
 
 void SIMPLE_CLIENT::joy_cb( sensor_msgs::JoyConstPtr j ) {
 
-    // LOGITECH F710 //Switch on D(DirectInput) and Mode led OFF
-    if( j->buttons[1] == 1 ) _enable_joy = true;
-    if( j->buttons[0] == 1 ) _enable_openarm = true;
-    if( j->buttons[2] == 1 ) _enable_closearm = true;
-    if( j->buttons[3] == 1 ) _enable_admittance = true;
-    if( j->buttons[9] == 1 ) _enable_interaction = true;
-    if( j->buttons[5] == 1 ) _enable_pump = true;
-    if( j->buttons[8] == 1 ) _enable_home = true;
-    if( j->buttons[5] == 1 ) _enable_next_step = true;
-    
+
+    // RC_TO_JOY ndt rasdiomaster
+    if( j->buttons[1] == 0 && _joy_ctrl ) _disable_joy = true;
+    if( j->buttons[1] == 2 && !_joy_ctrl ) _enable_joy = true;
+    if( j->buttons[0] == 1 ) _enable_next_step = true;
+
     // tocheck
     _vel_joy[0] = joy_ax0*j->axes[3]*0.2;
     _vel_joy[1] = joy_ax1*j->axes[2]*0.2;
     _vel_joy[2] = joy_ax2*j->axes[1]*0.2;
     _vel_joy_dyaw = joy_ax3*j->axes[0]*0.2;
+
+    // // LOGITECH F710 //Switch on D(DirectInput) and Mode led OFF
+    // if( j->buttons[1] == 1 ) _enable_joy = true;
+    // if( j->buttons[0] == 1 ) _enable_openarm = true;
+    // if( j->buttons[2] == 1 ) _enable_closearm = true;
+    // if( j->buttons[3] == 1 ) _enable_admittance = true;
+    // if( j->buttons[9] == 1 ) _enable_interaction = true;
+    // if( j->buttons[5] == 1 ) _enable_pump = true;
+    // if( j->buttons[8] == 1 ) _enable_home = true;
+    // if( j->buttons[5] == 1 ) _enable_next_step = true;
+    
+    // // tocheck
+    // _vel_joy[0] = joy_ax0*j->axes[3]*0.2;
+    // _vel_joy[1] = joy_ax1*j->axes[2]*0.2;
+    // _vel_joy[2] = joy_ax2*j->axes[1]*0.2;
+    // _vel_joy_dyaw = joy_ax3*j->axes[0]*0.2;
     
     // XBOX
     // if( j->buttons[0] == 1 ) _enable_joy = true;
@@ -700,14 +714,30 @@ void SIMPLE_CLIENT::sm_loop(){
 
     while( ros::ok() ) {
 
-        enable_joy_cnt++;
-        if( _enable_joy == true && enable_joy_cnt > 50) { //now is hybrid joy + wall control
+        // enable_joy_cnt++;
+
+
+        // RC_TO_JOY ndt rasdiomaster
+        if( _enable_joy == true ) { //now is hybrid joy + wall control
             if(!_joy_ctrl) _joy_ctrl = true;
-            else if( state ==LAND || state ==IDLE_CLOSE ||state == IDLE_OPEN ||state == GO_TO_HOME) _joy_ctrl = false;
-            else ROS_WARN("too neaw wall, cannot disable control!");
             enable_joy_cnt = 0;
             _enable_joy = false;
         }
+        if( _disable_joy == true ) { //now is hybrid joy + wall control
+            if( state ==LAND || state ==IDLE_CLOSE ||state == IDLE_OPEN ||state == GO_TO_HOME) _joy_ctrl = false;
+            else ROS_WARN("too near wall, cannot disable control!");
+            enable_joy_cnt = 0;
+            _disable_joy = false;
+        }
+
+        // // LOGITECH F710 //Switch on D(DirectInput) and Mode led OFF
+        // if( _enable_joy == true && enable_joy_cnt > 50) { //now is hybrid joy + wall control
+        //     if(!_joy_ctrl) _joy_ctrl = true;
+        //     else if( state ==LAND || state ==IDLE_CLOSE ||state == IDLE_OPEN ||state == GO_TO_HOME) _joy_ctrl = false;
+        //     else ROS_WARN("too neaw wall, cannot disable control!");
+        //     enable_joy_cnt = 0;
+        //     _enable_joy = false;
+        // }
 
         //Enable disable joy ctrl
         if( _joy_ctrl && !_joy_ctrl_active ) {     

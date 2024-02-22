@@ -107,6 +107,7 @@ class SIMPLE_CLIENT {
 
         bool _first_local_pos;
         bool _enable_joy;
+        bool _disable_joy;
         bool _joy_ctrl;
         bool _joy_ctrl_active;
         bool _enable_openarm;
