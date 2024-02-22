@@ -3,7 +3,7 @@ joy_ax1: 1.0
 joy_ax2: 1.0
 joy_ax3: 1.0
 
-range_mount_dist: 0.42   # [m] y dist bethween range sensors (to estimate wall_yaw)
+range_mount_dist: 0.4735   # [m] y dist bethween range sensors (to estimate wall_yaw)
 
 wall_max_yaw:  0.7853    #pi/4  #max angle for safe activate control
 wall_max_dist: 3.0          #max dist for safe activate control
@@ -19,7 +19,7 @@ vx_cruise: 0.15     #avg lin vel for traj
 vx_max: 0.2
 vyaw_max: 0.1   
 
-d_safe: 1.5        #initial dist from wall to open/close arm
-d_approch: 0.6     #fist from wall for stable tool contact
+d_safe: 1.5        #initial dist from wall to open/close arm N.B. referred to range sensor
+d_approch: 0.6     #fist from wall for stable tool contact   N.B. referred to range sensor
 wall_error_tresh: 0.04    # [m] min admissible track error to end trajectory
 contact_force_tresh: 0.5  # [N] min admissible contact force to detect wall contact

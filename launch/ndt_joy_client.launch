@@ -1,9 +1,18 @@
 <?xml version="1.0" ?>
 
 <launch>
+  <arg name="output"        default="screen"/> 
 
+  <include file="$(find tfluna_ranger)/launch/tfluna_ranger.launch" > 
+      <arg name="output" value="$(arg output)" />
+  </include>
+
+  <include file="$(find mavros_rc_to_joy)/launch/rc_to_joy.launch" > 
+      <arg name="output" value="$(arg output)" />
+  </include>
 
   <rosparam command="load" file="$(find ndt_joy_client)/conf/params.yaml" />
-  <node pkg="ndt_joy_client" type="ndt_joy_client" name ="ndt_joy_client" output="screen" />
+  <node pkg="ndt_joy_client" type="ndt_joy_client" name ="ndt_joy_client" output="$(arg output)" />
+
 
 </launch>	
