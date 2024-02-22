@@ -480,180 +480,180 @@ void SIMPLE_CLIENT::traj_compute_scalar(double p_i, double p_f){
     }   
 }
 
-void SIMPLE_CLIENT::main_loop () {
+// void SIMPLE_CLIENT::main_loop () {
 
-    int enable_joy_cnt = 0;
-    int enable_openarm_cnt = 0;
-    int enable_closearm_cnt = 0;
-    int enable_admittance_cnt = 0;
-    int enable_interaction_cnt = 0;
-    int enable_home_cnt = 0;
+//     int enable_joy_cnt = 0;
+//     int enable_openarm_cnt = 0;
+//     int enable_closearm_cnt = 0;
+//     int enable_admittance_cnt = 0;
+//     int enable_interaction_cnt = 0;
+//     int enable_home_cnt = 0;
 
-    ROS_INFO("start main loop.");
+//     ROS_INFO("start main loop.");
 
-    _joy_ctrl_active = false;
-    _joy_ctrl = false;
+//     _joy_ctrl_active = false;
+//     _joy_ctrl = false;
     
-    ros::Rate r(10);
+//     ros::Rate r(10);
 
-	ros::ServiceClient close_arm_srv           = _nh.serviceClient<ndt_core_interface::deploy>("/NDT/close_arm");
-  	ros::ServiceClient open_arm_srv            = _nh.serviceClient<ndt_core_interface::close>("/NDT/open_arm");
-  	ros::ServiceClient reset_bias_srv          = _nh.serviceClient<ndt_core_interface::reset_bias>("/NDT/reset_bias");
-  	ros::ServiceClient disable_motors_srv      = _nh.serviceClient<ndt_core_interface::disable_motors>("/NDT/disable_motors");
-  	ros::ServiceClient enable_motors_srv       = _nh.serviceClient<ndt_core_interface::enable_motors>("/NDT/enable_motors");
-  	ros::ServiceClient enable_admittance_srv   = _nh.serviceClient<ndt_core_interface::enable_admittance>("/NDT/enable_admittance_mode");
-  	ros::ServiceClient disable_admittance_srv  = _nh.serviceClient<ndt_core_interface::enable_admittance>("/NDT/enable_admittance_mode");
-  	ros::ServiceClient enable_interaction_srv  = _nh.serviceClient<ndt_core_interface::interaction_mode>("/NDT/enable_interaction_mode");
-  	ros::ServiceClient disable_interaction_srv = _nh.serviceClient<ndt_core_interface::interaction_mode>("/NDT/enable_interaction_mode");
-    ros::ServiceClient home_arm_srv            = _nh.serviceClient<ndt_core_interface::close>("/NDT/home_arm");
-	ros::Publisher gelPump_pub = _nh.advertise<std_msgs::Int32>("/NDT/pump_time", 1);
+// 	ros::ServiceClient close_arm_srv           = _nh.serviceClient<ndt_core_interface::deploy>("/NDT/close_arm");
+//   	ros::ServiceClient open_arm_srv            = _nh.serviceClient<ndt_core_interface::close>("/NDT/open_arm");
+//   	ros::ServiceClient reset_bias_srv          = _nh.serviceClient<ndt_core_interface::reset_bias>("/NDT/reset_bias");
+//   	ros::ServiceClient disable_motors_srv      = _nh.serviceClient<ndt_core_interface::disable_motors>("/NDT/disable_motors");
+//   	ros::ServiceClient enable_motors_srv       = _nh.serviceClient<ndt_core_interface::enable_motors>("/NDT/enable_motors");
+//   	ros::ServiceClient enable_admittance_srv   = _nh.serviceClient<ndt_core_interface::enable_admittance>("/NDT/enable_admittance_mode");
+//   	ros::ServiceClient disable_admittance_srv  = _nh.serviceClient<ndt_core_interface::enable_admittance>("/NDT/enable_admittance_mode");
+//   	ros::ServiceClient enable_interaction_srv  = _nh.serviceClient<ndt_core_interface::interaction_mode>("/NDT/enable_interaction_mode");
+//   	ros::ServiceClient disable_interaction_srv = _nh.serviceClient<ndt_core_interface::interaction_mode>("/NDT/enable_interaction_mode");
+//     ros::ServiceClient home_arm_srv            = _nh.serviceClient<ndt_core_interface::close>("/NDT/home_arm");
+// 	ros::Publisher gelPump_pub = _nh.advertise<std_msgs::Int32>("/NDT/pump_time", 1);
     
-	std_msgs::Int32 pumpTime;
+// 	std_msgs::Int32 pumpTime;
 
-	ndt_core_interface::deploy open_srv;
-	ndt_core_interface::close close_srv;
-	ndt_core_interface::disable_motors disable_m_srv;
-	ndt_core_interface::enable_motors enable_m_srv;
-	ndt_core_interface::enable_admittance enable_adm_srv;
-	enable_adm_srv.request.enable = true;
-	ndt_core_interface::enable_admittance disable_adm_srv;
-	disable_adm_srv.request.enable = false;
-	ndt_core_interface::reset_bias rnias_srv;
-    ndt_core_interface::close home_srv;
+// 	ndt_core_interface::deploy open_srv;
+// 	ndt_core_interface::close close_srv;
+// 	ndt_core_interface::disable_motors disable_m_srv;
+// 	ndt_core_interface::enable_motors enable_m_srv;
+// 	ndt_core_interface::enable_admittance enable_adm_srv;
+// 	enable_adm_srv.request.enable = true;
+// 	ndt_core_interface::enable_admittance disable_adm_srv;
+// 	disable_adm_srv.request.enable = false;
+// 	ndt_core_interface::reset_bias rnias_srv;
+//     ndt_core_interface::close home_srv;
 
 
-	ndt_core_interface::interaction_mode enable_int_srv;
-	enable_int_srv.request.enable = true;
-	ndt_core_interface::interaction_mode disable_int_srv;
-	disable_int_srv.request.enable = false;
+// 	ndt_core_interface::interaction_mode enable_int_srv;
+// 	enable_int_srv.request.enable = true;
+// 	ndt_core_interface::interaction_mode disable_int_srv;
+// 	disable_int_srv.request.enable = false;
 
-    _arm_status = POSITION;
-	geometry_msgs::WrenchStamped desWrench;
+//     _arm_status = POSITION;
+// 	geometry_msgs::WrenchStamped desWrench;
 
-    while( ros::ok() ) {
+//     while( ros::ok() ) {
 
-        enable_joy_cnt++;
-        enable_openarm_cnt++;
-        enable_closearm_cnt++;
-        enable_admittance_cnt++;
-        enable_interaction_cnt++;
-        enable_home_cnt++;
+//         enable_joy_cnt++;
+//         enable_openarm_cnt++;
+//         enable_closearm_cnt++;
+//         enable_admittance_cnt++;
+//         enable_interaction_cnt++;
+//         enable_home_cnt++;
        
 
-        if( _enable_joy == true && enable_joy_cnt > 50) { //now is hybrid joy + wall control
-            _joy_ctrl = !_joy_ctrl;
-            enable_joy_cnt = 0;
-            _enable_joy = false;
-        }
+//         if( _enable_joy == true && enable_joy_cnt > 50) { //now is hybrid joy + wall control
+//             _joy_ctrl = !_joy_ctrl;
+//             enable_joy_cnt = 0;
+//             _enable_joy = false;
+//         }
 
 
-        if( _enable_openarm && enable_openarm_cnt > 50) {
-            enable_openarm_cnt = 0;
-            open_arm_srv.call( open_srv );
-            _enable_openarm = false;
-            _arm_status = POSITION;
-        }
+//         if( _enable_openarm && enable_openarm_cnt > 50) {
+//             enable_openarm_cnt = 0;
+//             open_arm_srv.call( open_srv );
+//             _enable_openarm = false;
+//             _arm_status = POSITION;
+//         }
 
-        if( _enable_closearm && enable_closearm_cnt > 50) { //remain to initialize ancd check ??
-            enable_closearm_cnt = 0;
-			close_arm_srv.call( close_srv );
-            _enable_closearm = false;
-            _arm_status = POSITION;
-        }
+//         if( _enable_closearm && enable_closearm_cnt > 50) { //remain to initialize ancd check ??
+//             enable_closearm_cnt = 0;
+// 			close_arm_srv.call( close_srv );
+//             _enable_closearm = false;
+//             _arm_status = POSITION;
+//         }
 
-        if( _enable_pump ) {
-            _enable_pump = false;
-            pumpTime.data = 1;
-            gelPump_pub.publish( pumpTime );
-            sleep(1);
-            pumpTime.data = 0;
-            gelPump_pub.publish( pumpTime );
-        }
+//         if( _enable_pump ) {
+//             _enable_pump = false;
+//             pumpTime.data = 1;
+//             gelPump_pub.publish( pumpTime );
+//             sleep(1);
+//             pumpTime.data = 0;
+//             gelPump_pub.publish( pumpTime );
+//         }
 
 
-        if( _enable_admittance && enable_admittance_cnt > 50) {
-            if( _arm_status == POSITION )  {     //position_to_ammittance
-                reset_bias_srv.call(rnias_srv);  
-                usleep(0.2*1e6);
-                enable_admittance_cnt = 0;
-                enable_admittance_srv.call( enable_adm_srv );
-                _enable_admittance = false;
-                _arm_status = ADMITTANCE;
-            }
-            else if ( _arm_status == INTERACTION ) {   //force to ammittance
-                //force to zero, admittance  
-                _enable_admittance = false;
-                enable_admittance_cnt = 0;
-                forceSetpointRise(3.0, 0.0); 
-                enable_admittance_srv.call( enable_adm_srv );
-                _arm_status = ADMITTANCE;
-            }
-            else {
-                enable_admittance_cnt = 0;
-                enable_admittance_srv.call( disable_adm_srv );
-                _enable_admittance = false;
-                _arm_status = POSITION;
-            }
-        }
+//         if( _enable_admittance && enable_admittance_cnt > 50) {
+//             if( _arm_status == POSITION )  {     //position_to_ammittance
+//                 reset_bias_srv.call(rnias_srv);  
+//                 usleep(0.2*1e6);
+//                 enable_admittance_cnt = 0;
+//                 enable_admittance_srv.call( enable_adm_srv );
+//                 _enable_admittance = false;
+//                 _arm_status = ADMITTANCE;
+//             }
+//             else if ( _arm_status == INTERACTION ) {   //force to ammittance
+//                 //force to zero, admittance  
+//                 _enable_admittance = false;
+//                 enable_admittance_cnt = 0;
+//                 forceSetpointRise(3.0, 0.0); 
+//                 enable_admittance_srv.call( enable_adm_srv );
+//                 _arm_status = ADMITTANCE;
+//             }
+//             else {
+//                 enable_admittance_cnt = 0;
+//                 enable_admittance_srv.call( disable_adm_srv );
+//                 _enable_admittance = false;
+//                 _arm_status = POSITION;
+//             }
+//         }
 
-        if( _enable_interaction && enable_interaction_cnt > 50) {
-            if( _arm_status == INTERACTION )  {
+//         if( _enable_interaction && enable_interaction_cnt > 50) {
+//             if( _arm_status == INTERACTION )  {
                 
-                _enable_interaction = false;
-                disable_interaction_srv.call( disable_int_srv );
-                _arm_status = POSITION;
-                enable_interaction_cnt = 0;
+//                 _enable_interaction = false;
+//                 disable_interaction_srv.call( disable_int_srv );
+//                 _arm_status = POSITION;
+//                 enable_interaction_cnt = 0;
 
-            } //Disable interaction from an interaction state
-            else if( _arm_status == ADMITTANCE ) {  //ammittance_to_force
-                _enable_interaction = false;
-                enable_interaction_cnt = 0;
+//             } //Disable interaction from an interaction state
+//             else if( _arm_status == ADMITTANCE ) {  //ammittance_to_force
+//                 _enable_interaction = false;
+//                 enable_interaction_cnt = 0;
 
-                //TO CHEEEEEEEEEEECK
-                desWrench.wrench.force.x  = desWrench.wrench.force.y =  desWrench.wrench.force.z  = 0.0;
-                desWrench.wrench.torque.x = desWrench.wrench.torque.y = desWrench.wrench.torque.z = 0.0;
-                desWrench.wrench.force.x = _currForce;
-	        	_desWrench_pub.publish(desWrench);
+//                 //TO CHEEEEEEEEEEECK
+//                 desWrench.wrench.force.x  = desWrench.wrench.force.y =  desWrench.wrench.force.z  = 0.0;
+//                 desWrench.wrench.torque.x = desWrench.wrench.torque.y = desWrench.wrench.torque.z = 0.0;
+//                 desWrench.wrench.force.x = _currForce;
+// 	        	_desWrench_pub.publish(desWrench);
 
-                enable_interaction_srv.call( enable_int_srv );
-                forceSetpointRise(3.0, 2.5); 
+//                 enable_interaction_srv.call( enable_int_srv );
+//                 forceSetpointRise(3.0, 2.5); 
 
-                _arm_status = INTERACTION;
-            } //Enable interaction from admittance state
-        }
+//                 _arm_status = INTERACTION;
+//             } //Enable interaction from admittance state
+//         }
 
-        if( _enable_home && enable_home_cnt > 50 ) { //go_to_home
-            _enable_home = false;
-            enable_home_cnt = 0;
-			home_arm_srv.call(home_srv);          
-            _arm_status = POSITION;
-        }
+//         if( _enable_home && enable_home_cnt > 50 ) { //go_to_home
+//             _enable_home = false;
+//             enable_home_cnt = 0;
+// 			home_arm_srv.call(home_srv);          
+//             _arm_status = POSITION;
+//         }
 
-        //Enable disable joy ctrl
-        if( _joy_ctrl && !_joy_ctrl_active ) {     
-            // boost::thread joy_ctrl_t (&SIMPLE_CLIENT::joy_ctrl, this);
-            if(_green_light_for_ctrl){
-                ROS_INFO("Green Light, Activating joy/wall control");
-                r.sleep();
-                ROS_INFO("going to d_safe");
-                traj_compute_scalar(_wall_xb_sp,_d_safe);
-            } 
-            else{
-                ROS_WARN("out of range for activating control");
-                _joy_ctrl = false;
-            }
-            // usleep(0.2*1e6);
-        }
-        else if (!_joy_ctrl ) {
-            if (_joy_ctrl_active == true ) {
-                _joy_ctrl_active = false;
-                ROS_INFO("Deactivating joy/wall control");
-            }
-        }
+//         //Enable disable joy ctrl
+//         if( _joy_ctrl && !_joy_ctrl_active ) {     
+//             // boost::thread joy_ctrl_t (&SIMPLE_CLIENT::joy_ctrl, this);
+//             if(_green_light_for_ctrl){
+//                 ROS_INFO("Green Light, Activating joy/wall control");
+//                 r.sleep();
+//                 ROS_INFO("going to d_safe");
+//                 traj_compute_scalar(_wall_xb_sp,_d_safe);
+//             } 
+//             else{
+//                 ROS_WARN("out of range for activating control");
+//                 _joy_ctrl = false;
+//             }
+//             // usleep(0.2*1e6);
+//         }
+//         else if (!_joy_ctrl ) {
+//             if (_joy_ctrl_active == true ) {
+//                 _joy_ctrl_active = false;
+//                 ROS_INFO("Deactivating joy/wall control");
+//             }
+//         }
 
-        r.sleep();
-    }
-}
+//         r.sleep();
+//     }
+// }
 
 
 
@@ -702,6 +702,15 @@ void SIMPLE_CLIENT::sm_loop(){
 	geometry_msgs::WrenchStamped desWrench;
 
     //TODO wait first local pos, mavros state, range and force
+    ROS_INFO("Waiting for first local pos, range, wrench ... ");
+    while( !(_first_range_l && _first_range_r))
+        usleep(0.1*1e6);
+    while( !(_first_local_pos))
+        usleep(0.1*1e6);
+    while( !(_first_wrench))
+        usleep(0.1*1e6);
+    ROS_INFO("first wrench arrived");
+
     ROS_INFO("start sm loop.");
    
     state = LAND;
