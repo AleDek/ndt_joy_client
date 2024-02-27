@@ -20,6 +20,6 @@ vx_max: 0.2
 vyaw_max: 0.1   
 
 d_safe: 1.5        #initial dist from wall to open/close arm N.B. referred to range sensor
-d_approch: 0.6     #fist from wall for stable tool contact   N.B. referred to range sensor
+d_approch: 0.92 #[91 94]     #fist from wall for stable tool contact   N.B. referred to range sensor
 wall_error_tresh: 0.04    # [m] min admissible track error to end trajectory
 contact_force_tresh: 0.5  # [N] min admissible contact force to detect wall contact

@@ -285,6 +285,7 @@ void SIMPLE_CLIENT::joy_ctrl () { //diventa ibrido, controllo da joy su y e z, m
 
     
     _joy_ctrl_active = false;
+    _keep_position = false;
     ROS_INFO("wall control loop active");
     // geometry_msgs::PoseStamped wall_pose; //TODO debug only
     geometry_msgs::PoseStamped wall_pose_filtered; //TODO debug only
@@ -326,7 +327,7 @@ void SIMPLE_CLIENT::joy_ctrl () { //diventa ibrido, controllo da joy su y e z, m
         if(fabs(_wall_yaw) <_wall_max_yaw && fabs(_wall_xb) <_wall_max_dist) _green_light_for_ctrl = true;
         else _green_light_for_ctrl = false;
         
-        if( _joy_ctrl && _green_light_for_ctrl) { //compute control only if drone is in offboard
+        if( _joy_ctrl && _green_light_for_ctrl && !_keep_position) { //compute control only if drone is in offboard
             
             e_x = _wall_xb_sp - _wall_xb;
             _wall_error = e_x;
@@ -378,7 +379,7 @@ void SIMPLE_CLIENT::joy_ctrl () { //diventa ibrido, controllo da joy su y e z, m
             _cmd_v[1] = 0.00;
             _cmd_v[2] = 0.00;
             _cmd_dyaw = 0.00;
-            _joy_ctrl_active = false;
+            if(!_keep_position)_joy_ctrl_active = false;
         } // No control: follow localization
         
         //publish wall pose (raw and filter, for debug)
@@ -718,6 +719,7 @@ void SIMPLE_CLIENT::sm_loop(){
     current_state_done = false;
     wall_err_cnt =0;
     cont_f_cnt =0;
+    _keep_position = false;
     // _wall_error_tresh = 0.04;  //[m]  //are parameters
     // _contact_force_tresh =0.5; //[N]
 
@@ -764,6 +766,10 @@ void SIMPLE_CLIENT::sm_loop(){
             if (_joy_ctrl_active == true ) {
                 _joy_ctrl_active = false;
                 ROS_INFO("Deactivating joy/wall control");
+                //reset sm state gia fatto, non serve
+                // state = LAND;
+                // _enable_next_step = false;
+                // current_state_done = false;
             }
         }
 
@@ -773,11 +779,24 @@ void SIMPLE_CLIENT::sm_loop(){
                 ROS_WARN("wall control not enabled, cannot run sm");
                 _enable_next_step = false;
             }
-            if(state != IDLE_CLOSE && state != LAND){
+            if(state != IDLE_CLOSE && state != LAND){ //se spento joy control, vai in idle_close (chiudi il braccio) estandby 
+                ROS_INFO("joy/wall control off, reset sm to IDLE_CLOSE");
+                if(state != LAND) state = IDLE_CLOSE;
                 state = IDLE_CLOSE;
                 current_state_done = false;
             }
 
+        }
+
+        if(_mstate.mode != "OFFBOARD" ){
+           
+            if((state != IDLE_CLOSE && state != LAND) || _joy_ctrl_active){ //se spento joy control, vai in idle_close (chiudi il braccio) estandby 
+                ROS_WARN("drone not in offboard, reset sm to IDLE_CLOSE and turn off control");
+                if(state != LAND) state = IDLE_CLOSE;
+                current_state_done = false;
+                _joy_ctrl =false;
+            }
+            
         }
 
         if(_enable_next_step && !current_state_done) _enable_next_step = false;
@@ -839,8 +858,11 @@ void SIMPLE_CLIENT::sm_loop(){
                 case IDLE_CLOSE:
                     ROS_INFO("close arm..");
                     //call close srv
+                    _keep_position = true;  //standby control to avoid arm open/close interference
                     close_arm_srv.call( close_srv );
+                    ros::Duration(10.0).sleep();
                     _arm_status = POSITION;
+                    _keep_position = false;
                     current_state_done = true;
                     ROS_INFO("done");
                     break;
@@ -861,8 +883,11 @@ void SIMPLE_CLIENT::sm_loop(){
                 case IDLE_OPEN:
                     ROS_INFO("open arm..");
                     //call open srv
+                    _keep_position = true;  //standby control to avoid arm open/close interference
                     open_arm_srv.call( open_srv );
+                    ros::Duration(10.0).sleep();
                     _arm_status = POSITION;
+                    _keep_position = false;
                     current_state_done = true;
                     ROS_INFO("done");
                     break;
@@ -871,7 +896,7 @@ void SIMPLE_CLIENT::sm_loop(){
                     //call pump srv
                     pumpTime.data = 1;
                     gelPump_pub.publish( pumpTime );
-                    sleep(1);
+                    ros::Duration(1.0).sleep();
                     pumpTime.data = 0;
                     gelPump_pub.publish( pumpTime );
                     current_state_done = true;
@@ -883,8 +908,10 @@ void SIMPLE_CLIENT::sm_loop(){
                     //call amm srv
                     if( _arm_status == POSITION )  {     //position_to_ammittance
                         reset_bias_srv.call(rnias_srv);  
-                        usleep(0.2*1e6);
+                        //usleep(0.2*1e6);
+                        ros::Duration(0.1).sleep();
                         enable_admittance_srv.call( enable_adm_srv );
+                        ros::Duration(2.0).sleep();
                         _arm_status = ADMITTANCE;
                     }
                     current_state_done = true;

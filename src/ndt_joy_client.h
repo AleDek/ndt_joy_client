@@ -123,6 +123,7 @@ class SIMPLE_CLIENT {
 
         // wall approach control
         // bool _enable_wall_ctrl; //TODO remove
+        bool _keep_position; //flag to standby control and keep position
         bool _green_light_for_ctrl;
         bool _wall_ctrl;
         bool _first_range_l;
