@@ -1,17 +1,17 @@
-joy_ax0: 1.0 
-joy_ax1: 1.0
-joy_ax2: 1.0
-joy_ax3: 1.0
+joy_ax0: 1.0 #x
+joy_ax1: -1.0 #y
+joy_ax2: 1.0 #z
+joy_ax3: 1.0 #yaw
 
-range_mount_dist: 0.4735   # [m] y dist bethween range sensors (to estimate wall_yaw)
+range_mount_dist: 0.53 #0.4735   # [m] y dist bethween range sensors (to estimate wall_yaw)
 
 wall_max_yaw:  0.7853    #pi/4  #max angle for safe activate control
 wall_max_dist: 3.0          #max dist for safe activate control
 
-Kp_x: 0.2          # p gain for wall dist control
+Kp_x: 0.5          # p gain for wall dist control
 Kp_yaw: 0.3        # p gain for wall yaw control
-#Kd_x: 0.0          # d gain for wall dist control
-#Kd_yaw: 0.0        # d gain for wall yaw control
+Kd_x: 0.0          # d gain for wall dist control
+Kd_yaw: 0.0        # d gain for wall yaw control
 K_ff_x_dot: 0.0  #enable disable traj vel ff
 eps_x: 0.001       # error treshold for wall dist control
 eps_yaw: 0.001     # error treshold for wall yaw control

@@ -46,13 +46,13 @@ SIMPLE_CLIENT::SIMPLE_CLIENT() {
         _Kp_yaw = 0.3;
     }
 
-    // if( !_nh.getParam("Kd_x", _Kd_x)) {
-    //     _Kd_x = 0.0;
-    // }
+    if( !_nh.getParam("Kd_x", _Kd_x)) {
+        _Kd_x = 0.0;
+    }
 
-    // if( !_nh.getParam("Kd_yaw", _Kd_yaw)) {
-    //     _Kd_yaw = 0.08;
-    // }
+    if( !_nh.getParam("Kd_yaw", _Kd_yaw)) {
+        _Kd_yaw = 0.08;
+    }
 
     if( !_nh.getParam("eps_x", _eps_x)) {
         _eps_x = 0.001;
@@ -115,9 +115,10 @@ SIMPLE_CLIENT::SIMPLE_CLIENT() {
 
     _first_local_pos = false;
     _enable_joy = false;
-    _disable_joy = false;
+    _disable_joy = false; //TODO true ?
     _enable_next_step = false;
     _green_light_for_ctrl = false;
+    _lock_yz_pos = false;
 
     _enable_openarm  = false;
     _enable_closearm = false;
@@ -314,6 +315,9 @@ void SIMPLE_CLIENT::joy_ctrl () { //diventa ibrido, controllo da joy su y e z, m
     _wall_xb_sp = (_range_l_val + _range_r_val) / 2.00;
     _wall_xb_dot_sp = 0.00;
     _green_light_for_ctrl = false;
+    bool reset_integral = true;
+    bool reset_integral_done = false;
+    double yz_joy_gain = 1.00;
 
     while ( ros::ok() ) {
         //compute wall dist and yaw
@@ -326,16 +330,27 @@ void SIMPLE_CLIENT::joy_ctrl () { //diventa ibrido, controllo da joy su y e z, m
         
         if(fabs(_wall_yaw) <_wall_max_yaw && fabs(_wall_xb) <_wall_max_dist) _green_light_for_ctrl = true;
         else _green_light_for_ctrl = false;
+
+        if(reset_integral && ! reset_integral_done){
+            _cmd_p = _w_p;
+            _cmd_yaw = _mes_yaw;
+            reset_integral = false;
+            reset_integral_done = true;
+        }
         
         if( _joy_ctrl && _green_light_for_ctrl && !_keep_position) { //compute control only if drone is in offboard
-            
+            reset_integral_done = false;
+            reset_integral = false;
             e_x = _wall_xb_sp - _wall_xb;
             _wall_error = e_x;
             if(fabs(e_x) < _eps_x) e_x = 0.00;
             e_yaw = -_wall_yaw;
             if(fabs(e_yaw) < _eps_yaw) e_yaw = 0.00;
 
-            u_b << -(_Kp_x*e_x) -(_K_ff_x_dot*_wall_xb_dot_sp) ,_vel_joy[1], _vel_joy[2]; //wall ctrl + joy ctl on y_b and z_b
+            if(_lock_yz_pos) yz_joy_gain =0.00;
+            else yz_joy_gain =1.00;
+
+            u_b << -(_Kp_x*e_x) -(_Kd_x*(e_x- e_x_old)*100.0) -(_K_ff_x_dot*_wall_xb_dot_sp) ,yz_joy_gain*_vel_joy[1], yz_joy_gain*_vel_joy[2]; //wall ctrl + joy ctl on y_b and z_b
             u_dyaw = -(_Kp_yaw*e_yaw );
 
             //saturate velocity output
@@ -373,13 +388,16 @@ void SIMPLE_CLIENT::joy_ctrl () { //diventa ibrido, controllo da joy su y e z, m
         else {  //if not in offboard reset integrals and outputs and overwrite sp 
             _wall_xb_sp = _wall_xb; 
             _wall_xb_dot_sp =0.00;
-            _cmd_p = _w_p;
-            _cmd_yaw = _mes_yaw;
+            // _cmd_p = _w_p;
+            // _cmd_yaw = _mes_yaw;
             _cmd_v[0] = 0.00;
             _cmd_v[1] = 0.00;
             _cmd_v[2] = 0.00;
             _cmd_dyaw = 0.00;
-            if(!_keep_position)_joy_ctrl_active = false;
+            if(!_keep_position){
+                _joy_ctrl_active = false;
+                reset_integral = true;
+            }
         } // No control: follow localization
         
         //publish wall pose (raw and filter, for debug)
@@ -667,6 +685,7 @@ void SIMPLE_CLIENT::sm_loop(){
     int wall_err_cnt;
     int enable_joy_cnt;
     int cont_f_cnt;
+    bool arm_is_closed = false;
 
     ros::ServiceClient close_arm_srv           = _nh.serviceClient<ndt_core_interface::deploy>("/NDT/close_arm");
   	ros::ServiceClient open_arm_srv            = _nh.serviceClient<ndt_core_interface::close>("/NDT/open_arm");
@@ -712,6 +731,18 @@ void SIMPLE_CLIENT::sm_loop(){
         usleep(0.1*1e6);
     ROS_INFO("first wrench arrived");
 
+    reset_bias_srv.call(rnias_srv);  
+    //usleep(0.2*1e6);
+    ros::Duration(0.1).sleep();
+
+    ROS_INFO("close arm to activate torque");
+    close_arm_srv.call( close_srv );
+    ros::Duration(10.0).sleep();
+    _arm_status = POSITION;
+    arm_is_closed = true;
+
+
+
     ROS_INFO("start sm loop.");
    
     state = LAND;
@@ -720,6 +751,7 @@ void SIMPLE_CLIENT::sm_loop(){
     wall_err_cnt =0;
     cont_f_cnt =0;
     _keep_position = false;
+    _lock_yz_pos = false;
     // _wall_error_tresh = 0.04;  //[m]  //are parameters
     // _contact_force_tresh =0.5; //[N]
 
@@ -852,21 +884,27 @@ void SIMPLE_CLIENT::sm_loop(){
         if( !current_state_done){
             switch (state){
                 case LAND:
+                    _lock_yz_pos = false;
                     ROS_INFO("land.");
                     current_state_done = true;
                     break;            
                 case IDLE_CLOSE:
+                    _lock_yz_pos = false;
                     ROS_INFO("close arm..");
-                    //call close srv
-                    _keep_position = true;  //standby control to avoid arm open/close interference
-                    close_arm_srv.call( close_srv );
-                    ros::Duration(10.0).sleep();
-                    _arm_status = POSITION;
-                    _keep_position = false;
+                    if(!arm_is_closed){
+                        //call close srv
+                        _keep_position = true;  //standby control to avoid arm open/close interference
+                        close_arm_srv.call( close_srv );
+                        ros::Duration(10.0).sleep();
+                        _arm_status = POSITION;
+                        _keep_position = false;
+                        arm_is_closed = true;
+                    }
                     current_state_done = true;
                     ROS_INFO("done");
                     break;
                 case APPROACH_WALL:
+                    _lock_yz_pos = false;
                     if(first){
                         ROS_INFO("going to d_safe..");
                         traj_compute_scalar(_wall_xb_sp,_d_safe);
@@ -881,6 +919,7 @@ void SIMPLE_CLIENT::sm_loop(){
                     }
                     break;
                 case IDLE_OPEN:
+                    _lock_yz_pos = false;
                     ROS_INFO("open arm..");
                     //call open srv
                     _keep_position = true;  //standby control to avoid arm open/close interference
@@ -888,10 +927,12 @@ void SIMPLE_CLIENT::sm_loop(){
                     ros::Duration(10.0).sleep();
                     _arm_status = POSITION;
                     _keep_position = false;
+                    arm_is_closed = false;
                     current_state_done = true;
                     ROS_INFO("done");
                     break;
                 case PUMP:
+                    _lock_yz_pos = false;
                     ROS_INFO("pumping..");
                     //call pump srv
                     pumpTime.data = 1;
@@ -903,6 +944,7 @@ void SIMPLE_CLIENT::sm_loop(){
                     ROS_INFO("done");
                     break;
                 case POS_TO_ADM:
+                    _lock_yz_pos = false;
                     ROS_INFO("reset bias +ammittance..");
                     //call resb srv
                     //call amm srv
@@ -918,6 +960,7 @@ void SIMPLE_CLIENT::sm_loop(){
                     ROS_INFO("done");
                     break;
                 case GO_CONTACT:
+                    _lock_yz_pos = true;
                     if(first){
                         ROS_INFO("going to d_approach..");
                         traj_compute_scalar(_wall_xb_sp,_d_approch);
@@ -938,6 +981,7 @@ void SIMPLE_CLIENT::sm_loop(){
                     }
                     break;
                 case ADM_TO_FORCE:
+                    _lock_yz_pos = true;
                     ROS_INFO("force ramp..");
                     //call force srv
                     //call force ramp to sp
@@ -959,10 +1003,12 @@ void SIMPLE_CLIENT::sm_loop(){
                     ROS_INFO("done");
                     break;
                 case MEASUREMENT:
+                    _lock_yz_pos = true;
                     ROS_INFO("meas..");
                     current_state_done = true;
                     break;
                 case FORCE_TO_ADM:
+                    _lock_yz_pos = true;
                     ROS_INFO("force ramp to 0 + amm..");
                     //call force ramp to 0
                     //check for force ??? forse NO !
@@ -977,6 +1023,7 @@ void SIMPLE_CLIENT::sm_loop(){
                     ROS_INFO("done");
                     break;
                 case LEAVE_WALL:
+                    _lock_yz_pos = true;
                     if(first){
                         ROS_INFO("return to d_safe");
                         traj_compute_scalar(_wall_xb_sp,_d_safe);
@@ -991,6 +1038,7 @@ void SIMPLE_CLIENT::sm_loop(){
                     }
                     break;
                 case GO_TO_HOME:
+                    _lock_yz_pos = false;
                     ROS_INFO("go home..");
                     //call home srv
                     home_arm_srv.call(home_srv);          

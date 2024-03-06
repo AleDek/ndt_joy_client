@@ -126,6 +126,7 @@ class SIMPLE_CLIENT {
         bool _keep_position; //flag to standby control and keep position
         bool _green_light_for_ctrl;
         bool _wall_ctrl;
+        bool _lock_yz_pos;
         bool _first_range_l;
         bool _first_range_r;
         double _range_r_val;
@@ -168,8 +169,8 @@ class SIMPLE_CLIENT {
         double _Kp_x;
         double _Kp_yaw;
         double _K_ff_x_dot;
-        // double _Kd_x;
-        // double _Kd_yaw;
+        double _Kd_x;
+        double _Kd_yaw;
         double _eps_x;
         double _eps_yaw;
         double _vx_cruise;
